@@ -7,25 +7,23 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 
 WORKDIR /app
 
-# Make Python find our top-level modules
+# Make Python find our code
 ENV PYTHONUNBUFFERED=1
 ENV PYTHONDONTWRITEBYTECODE=1
 ENV PYTHONPATH=/app
 
-# Install deps (layer-cached)
+# Install deps first (better caching)
 COPY requirements.txt /app/requirements.txt
 RUN pip install --no-cache-dir --upgrade pip && \
     pip install --no-cache-dir -r /app/requirements.txt
 
-# Copy project
+# Copy project & ensure start script is executable
 COPY . /app
 RUN chmod +x /app/start.sh
 
-# Pre-generate data & model at build time
-RUN python data/generate_synthetic.py && \
-    python src/train.py
-
+# Expose ports (Render will route $PORT to Streamlit)
 EXPOSE 8501
 EXPOSE 8000
 
+# Start: API in background, Streamlit on $PORT (handled by start.sh)
 CMD ["/app/start.sh"]
