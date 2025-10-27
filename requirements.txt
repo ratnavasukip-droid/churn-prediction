@@ -1,0 +1,14 @@
+fastapi
+uvicorn[standard]
+pandas
+scikit-learn
+xgboost
+mlflow
+joblib
+streamlit
+requests
+numpy
+sentence-transformers
+faiss-cpu
+transformers
+flask
