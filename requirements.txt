@@ -12,3 +12,5 @@ sentence-transformers
 faiss-cpu
 transformers
 flask
+
+shap==0.45.0
