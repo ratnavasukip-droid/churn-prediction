@@ -7,10 +7,14 @@ mlflow
 joblib
 streamlit
 requests
-numpy
+numpy==1.26.4
 sentence-transformers
 faiss-cpu
 transformers
 flask
 
 shap==0.45.0
+shap==0.45.0
+numpy==1.26.4
+llvmlite==0.45.1
+numba==0.62.1
