@@ -10,6 +10,11 @@ from src.predict import _feature_names as FEATURE_NAMES
 
 app = FastAPI(title="Churn API")
 
+@app.get("/ping")
+def ping():
+    return {"status": "ok"}
+
+
 @app.post("/predict")
 def predict(records: list[dict] = Body(...)):
     """
