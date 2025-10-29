@@ -1,46 +1,45 @@
+from typing import Any
 from fastapi import FastAPI, Body
 import pandas as pd
-
-from src.features import preprocess
 from src.predict import load_artifacts
+from src.features import preprocess
 
 app = FastAPI(title="Churn API")
 
 @app.post("/predict")
-def predict(records: list[dict] = Body(...)):
+def predict(body: Any = Body(...)):
     """
-    Accepts: {"records": [ {...row1...}, {...row2...}, ... ]}
-    Returns: {"predictions": [float, ...]}
+    Accepts either:
+      - {"records": [ {row}, {row}, ... ]}
+      - [ {row}, {row}, ... ]
+      - or a single {row} (we'll wrap into a list)
     """
+    # Normalize incoming payload to a list[dict]
+    records = None
+    if isinstance(body, dict):
+        # common wrapper keys
+        for key in ("records", "data", "rows"):
+            if key in body:
+                records = body[key]
+                break
+        # if no wrapper and looks like a single row, wrap it
+        if records is None:
+            records = [body]
+    elif isinstance(body, list):
+        records = body
+    else:
+        records = []
+
+    if not isinstance(records, list):
+        records = [records]
+
+    df = pd.DataFrame(records)
+    # clean NAs to avoid type issues
+    for c in df.columns:
+        df[c] = df[c].where(pd.notna(df[c]), None)
+
     model, encoder, _ = load_artifacts()
-    # Get list from Body(...) directly or {"records": ...}
-    rows = records if isinstance(records, list) else records.get("records", [])
-    df = pd.DataFrame(rows)
-    # normalize None/NaN
-    for c in df.columns:
-        df[c] = df[c].where(pd.notna(df[c]), None)
     X, _, _ = preprocess(df, fit_encoder=False, encoder=encoder)
-    proba = model.predict_proba(X)[:, 1].astype(float).tolist()
-    return {"predictions": proba}
-
-@app.post("/explain")
-def explain(record: dict = Body(...)):
-    """
-    Accepts: {"record": {...single row...}}
-    Returns: simple prob + placeholder shap_values list (zeros)
-    """
-    model, encoder, feature_names = load_artifacts()
-    row = record if isinstance(record, dict) else record.get("record", {})
-    df = pd.DataFrame([row])
-    for c in df.columns:
-        df[c] = df[c].where(pd.notna(df[c]), None)
-    X, _, feature_names = preprocess(df, fit_encoder=False, encoder=encoder)
-
-    prob = float(model.predict_proba(X)[0, 1])
-    shap_values = [0.0] * len(feature_names)  # keep simple for stability
-    return {
-        "prob": prob,
-        "feature_names": feature_names,
-        "shap_values": shap_values,
-    }
+    proba = model.predict_proba(X)[:, 1]
+    return {"predictions": [float(p) for p in proba]}
 
