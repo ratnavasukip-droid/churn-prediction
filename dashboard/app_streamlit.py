@@ -1,31 +1,52 @@
 import streamlit as st
 import pandas as pd
 import requests
+import numpy as np
+
+API_URL = "https://churn-prediction-1-73fit.onrender.com"
 
 st.title("Customer Churn Explorer")
 
-uploaded = st.file_uploader("Upload CSV with customer fields", type=['csv'])
-if uploaded:
-    df = pd.read_csv(uploaded)
-    st.write("Preview", df.head())
-    if st.button("Run predictions (local API expected at :8000)"):
-        rows = []
-        for _, r in df.iterrows():
-            payload = {
-                "tenure": int(r.get("tenure", 12)),
-                "monthly_charges": float(r.get("monthly_charges", 70.0)),
-                "contract": r.get("contract", "month-to-month"),
-                "internet": r.get("internet", "dsl"),
-                "tech_support": int(r.get("tech_support", 0)),
-                "payment_method": r.get("payment_method", "electronic"),
-                "num_products": int(r.get("num_products", 1))
-            }
-            try:
-                res = requests.post("http://localhost:8000/predict", json=payload, timeout=5)
-                prob = res.json().get("churn_prob")
-            except Exception:
-                prob = None
-            rows.append({**payload, "churn_prob": prob})
-        st.write(pd.DataFrame(rows))
-else:
-    st.info("Upload a CSV or run data/generate_synthetic.py to create a sample dataset.")
+uploaded_file = st.file_uploader("Upload CSV with customer fields", type=["csv"])
+
+if uploaded_file:
+    df = pd.read_csv(uploaded_file)
+    st.write("Preview")
+    st.dataframe(df.head())
+
+    if st.button("Run Predictions"):
+        try:
+            resp = requests.post(f"{API_URL}/predict",
+                                json={"records": df.to_dict(orient="records")},
+                                timeout=60)
+            resp.raise_for_status()
+            preds = pd.DataFrame(resp.json()["predictions"], columns=["churn_probability"])
+            st.dataframe(pd.concat([df, preds], axis=1))
+        except Exception as e:
+            st.error(f"API error: {e}")
+
+    st.write("---")
+    st.subheader("🔎 Explain a single prediction (SHAP)")
+    row_idx = st.number_input("Select row index:", 0, len(df)-1)
+
+    if st.button("Explain this row"):
+        row = df.iloc[int(row_idx)].to_dict()
+        try:
+            resp = requests.post(f"{API_URL}/explain",
+                                json={"record": row},
+                                timeout=60)
+            resp.raise_for_status()
+            res = resp.json()
+
+            st.write(f"Predicted churn probability: {res['prob']:.3f}")
+
+            feature_names = res["feature_names"]
+            shap_values = res["shap_values"]
+
+            idx = np.argsort(np.abs(shap_values))[::-1][:10]
+            st.bar_chart(pd.DataFrame({
+                "impact": np.array(shap_values)[idx]
+            }, index=np.array(feature_names)[idx]))
+
+        except Exception as e:
+            st.error(f"Explain error: {e}")
