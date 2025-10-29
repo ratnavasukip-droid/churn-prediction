@@ -1,45 +1,33 @@
-from typing import Any
-from fastapi import FastAPI, Body
+# api/app.py
+from fastapi import FastAPI, Body, HTTPException
 import pandas as pd
 from src.predict import load_artifacts
 from src.features import preprocess
 
 app = FastAPI(title="Churn API")
 
+@app.get("/health")
+def health():
+    return {"ok": True}
+
 @app.post("/predict")
-def predict(body: Any = Body(...)):
-    """
-    Accepts either:
-      - {"records": [ {row}, {row}, ... ]}
-      - [ {row}, {row}, ... ]
-      - or a single {row} (we'll wrap into a list)
-    """
-    # Normalize incoming payload to a list[dict]
-    records = None
-    if isinstance(body, dict):
-        # common wrapper keys
-        for key in ("records", "data", "rows"):
-            if key in body:
-                records = body[key]
-                break
-        # if no wrapper and looks like a single row, wrap it
-        if records is None:
-            records = [body]
-    elif isinstance(body, list):
-        records = body
-    else:
-        records = []
+def predict(payload: dict | list = Body(...)):
+    try:
+        # Accept {"records":[...]} or bare list
+        records = payload.get("records") if isinstance(payload, dict) else payload
+        if not isinstance(records, list):
+            raise HTTPException(status_code=400, detail="Bad payload: expected {'records': [...]} or list of dicts")
 
-    if not isinstance(records, list):
-        records = [records]
+        df = pd.DataFrame(records)
+        for c in df.columns:
+            df[c] = df[c].where(pd.notna(df[c]), None)
 
-    df = pd.DataFrame(records)
-    # clean NAs to avoid type issues
-    for c in df.columns:
-        df[c] = df[c].where(pd.notna(df[c]), None)
+        model, encoder, _ = load_artifacts()
+        X, _, _ = preprocess(df, fit_encoder=False, encoder=encoder)
+        proba = model.predict_proba(X)[:, 1].astype(float).tolist()
+        return {"predictions": proba}
 
-    model, encoder, _ = load_artifacts()
-    X, _, _ = preprocess(df, fit_encoder=False, encoder=encoder)
-    proba = model.predict_proba(X)[:, 1]
-    return {"predictions": [float(p) for p in proba]}
+    except Exception as e:
+        # Return message so Streamlit shows the real reason
+        raise HTTPException(status_code=500, detail=f"/predict failed: {type(e).__name__}: {e}")
 

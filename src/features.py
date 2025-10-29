@@ -1,26 +1,46 @@
+# src/features.py
 import pandas as pd
 from sklearn.preprocessing import OneHotEncoder
-import joblib
-import os
+from sklearn.compose import ColumnTransformer
+from sklearn.pipeline import Pipeline
+from sklearn.impute import SimpleImputer
 
-ENCODER_PATH = os.path.join(os.path.dirname(__file__), "encoder.joblib")
+CATEGORICAL = ["contract", "internet", "payment_method"]  # adjust to your raw cols
+NUMERIC = ["tenure", "monthly_charges", "tech_support"]   # adjust to your raw cols
 
-def load_data(path):
-    return pd.read_csv(path)
+def _build_preprocessor():
+    cat = Pipeline(steps=[
+        ("impute", SimpleImputer(strategy="most_frequent")),
+        ("ohe", OneHotEncoder(handle_unknown="ignore", sparse_output=False))  # <-- key
+    ])
+    num = Pipeline(steps=[
+        ("impute", SimpleImputer(strategy="median"))
+    ])
+    pre = ColumnTransformer(
+        transformers=[
+            ("num", num, NUMERIC),
+            ("cat", cat, CATEGORICAL),
+        ],
+        remainder="drop",
+        verbose_feature_names_out=False,
+    )
+    return pre
 
-def preprocess(df, fit_encoder=False):
+def preprocess(df: pd.DataFrame, fit_encoder: bool, encoder=None):
     df = df.copy()
-    df['high_charge'] = (df['monthly_charges'] > 100).astype(int)
-    df['short_tenure'] = (df['tenure'] < 6).astype(int)
-    cat_cols = ['contract','internet','payment_method']
-    num_cols = ['tenure','monthly_charges','num_products','high_charge','short_tenure','tech_support']
+
+    # Coerce expected columns to exist (missing → NaN)
+    for col in NUMERIC + CATEGORICAL:
+        if col not in df.columns:
+            df[col] = pd.NA
+
+    pre = encoder if encoder is not None else _build_preprocessor()
     if fit_encoder:
-        enc = OneHotEncoder(sparse_output=False, handle_unknown='ignore')
-        enc.fit(df[cat_cols])
-        joblib.dump(enc, ENCODER_PATH)
+        X = pre.fit_transform(df)
+        feature_names = pre.get_feature_names_out().tolist()
+        return X, pre, feature_names
     else:
-        enc = joblib.load(ENCODER_PATH)
-    cat_ohe = pd.DataFrame(enc.transform(df[cat_cols]), columns=enc.get_feature_names_out(cat_cols))
-    X = pd.concat([df[num_cols].reset_index(drop=True), cat_ohe.reset_index(drop=True)], axis=1)
-    y = df['churn'] if 'churn' in df.columns else None
-    return X, y
+        X = pre.transform(df)
+        feature_names = pre.get_feature_names_out().tolist()
+        return X, None, feature_names
+
