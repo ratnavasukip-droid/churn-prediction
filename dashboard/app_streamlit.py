@@ -3,7 +3,8 @@ import pandas as pd
 import requests
 import numpy as np
 
-API_URL = "https://churn-prediction-1-73fit.onrender.com"
+# IMPORTANT: on Render, this runs on the server, so localhost:8000 works.
+API_URL = "http://127.0.0.1:8000"
 
 st.title("Customer Churn Explorer")
 
@@ -17,7 +18,7 @@ if uploaded_file:
     if st.button("Run Predictions"):
         try:
             resp = requests.post(f"{API_URL}/predict",
-                                json={"records": df.to_dict(orient="records")},
+                                json={"records": df.to_dict(orient='records')},
                                 timeout=60)
             resp.raise_for_status()
             preds = pd.DataFrame(resp.json()["predictions"], columns=["churn_probability"])
@@ -37,16 +38,14 @@ if uploaded_file:
                                 timeout=60)
             resp.raise_for_status()
             res = resp.json()
-
             st.write(f"Predicted churn probability: {res['prob']:.3f}")
 
             feature_names = res["feature_names"]
             shap_values = res["shap_values"]
-
             idx = np.argsort(np.abs(shap_values))[::-1][:10]
-            st.bar_chart(pd.DataFrame({
-                "impact": np.array(shap_values)[idx]
-            }, index=np.array(feature_names)[idx]))
-
+            st.bar_chart(pd.DataFrame(
+                {"impact": np.array(shap_values)[idx]},
+                index=np.array(feature_names)[idx]
+            ))
         except Exception as e:
             st.error(f"Explain error: {e}")
