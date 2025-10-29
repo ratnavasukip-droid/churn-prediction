@@ -1,18 +1,14 @@
-import joblib
-import os
-from src.features import preprocess
-import xgboost as xgb
-import pandas as pd
+from xgboost import XGBClassifier
 
-MODEL_PATH = os.path.join(os.path.dirname(__file__), "xgb_model.joblib")
+def build_model():
+    return XGBClassifier(
+        n_estimators=200,
+        max_depth=5,
+        learning_rate=0.1,
+        subsample=0.9,
+        colsample_bytree=0.8,
+        eval_metric="logloss",
+        tree_method="hist",
+        random_state=42,
+    )
 
-class ChurnModel:
-    def __init__(self):
-        self.model = joblib.load(MODEL_PATH)
-    def predict(self, raw_df):
-        X, _ = preprocess(raw_df, fit_encoder=False)
-        try:
-            preds = self.model.predict(xgb.DMatrix(X))
-        except Exception:
-            preds = self.model.predict_proba(X)[:,1]
-        return preds
